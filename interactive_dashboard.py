@@ -3,50 +3,59 @@ import pandas as pd
 import numpy as np
 import altair as alt
 import pydeck as pdk
-import time
-from datetime import timedelta, datetime
+from datetime import datetime
 
 # --- Page Setup ---
-st.set_page_config(page_title="Epidemiologist Data Science Tool", layout="wide")
-
+st.set_page_config(page_title="Mobile Clinic Epidemiologist Tool", layout="wide")
 st.title("🦠 Epidemiologist Data Science Tool")
 
 # --- Sidebar Navigation ---
 st.sidebar.title("Navigation")
 section = st.sidebar.radio("Go to:", ["📘 Learning", "🧪 Doing"])
 
-# --- Shared Parameters ---
-st.sidebar.header("Simulation Settings")
-num_cases = st.sidebar.slider("Number of simulated cases", 50, 1000, 200)
-infection_rate = st.sidebar.slider("Infection rate (%)", 1, 100, 10)
-
-np.random.seed(42)
-data = pd.DataFrame({
-    "Patient ID": range(1, num_cases+1),
-    "Age": np.random.randint(0, 90, size=num_cases),
-    "Sex": np.random.choice(["M", "F"], size=num_cases),
-    "Latitude": np.random.uniform(-30.0, -29.5, size=num_cases),
-    "Longitude": np.random.uniform(25.5, 26.5, size=num_cases),
-    "Infected": np.random.choice([0,1], size=num_cases, p=[1-infection_rate/100, infection_rate/100]),
-    "Diagnosis Date": pd.to_datetime('2025-10-01') + pd.to_timedelta(np.random.randint(0, 30, size=num_cases), unit='d')
-})
-
 # ====================================================
 # 📘 LEARNING SECTION
 # ====================================================
 if section == "📘 Learning":
     st.header("📘 Learn Epidemiological Concepts")
-
     st.markdown("""
-    Welcome to the **Learning Mode**!  
-    Here you can explore epidemiological data and understand infection patterns before experimenting.
+    Welcome to **Learning Mode**! Explore sample mobile clinic data, run experiments, 
+    and see how changing parameters affects infection spread.
     """)
 
-    # --- 1. Sample Data ---
+    # --- Experiment / Simulation ---
+    st.subheader("🧪 Experiment / Simulation")
+
+    # Parameters
+    num_cases = st.slider("Number of simulated cases", 50, 1000, 200)
+    infection_rate = st.slider("Infection rate (%)", 1, 100, 10)
+    days = st.slider("Days to simulate", 10, 100, 30)
+
+    # Mobile clinic infection types
+    mobile_clinic_infection_types = [
+        "URTI", "Gastroenteritis", "Skin Infection", "UTI", "STI",
+        "Eye Infection", "Ear Infection", "Minor Wound", "Parasitic Infection",
+        "Influenza-like Illness", "Allergic Reaction", "Dental Infection",
+        "Nutritional / Hygiene Condition", "Other"
+    ]
+
+    # Generate simulated mobile clinic data
+    np.random.seed(42)
+    data = pd.DataFrame({
+        "Patient ID": range(1, num_cases + 1),
+        "Age": np.random.randint(0, 90, size=num_cases),
+        "Sex": np.random.choice(["M", "F"], size=num_cases),
+        "Latitude": np.random.uniform(-30.0, -29.5, size=num_cases),
+        "Longitude": np.random.uniform(25.5, 26.5, size=num_cases),
+        "Infected": np.random.choice([0, 1], size=num_cases, p=[1 - infection_rate / 100, infection_rate / 100]),
+        "Type of Infection": np.random.choice(mobile_clinic_infection_types, size=num_cases),
+        "Diagnosis Date": pd.to_datetime('2025-10-01') + pd.to_timedelta(np.random.randint(0, days, size=num_cases), unit='d')
+    })
+
     st.subheader("Sample Patient Data")
     st.dataframe(data.head())
 
-    # --- 2. Infections Over Time ---
+    # Infections over time
     st.subheader("Infections Over Time")
     time_series = data.groupby("Diagnosis Date")["Infected"].sum().reset_index()
     line_chart = alt.Chart(time_series).mark_line(point=True).encode(
@@ -55,218 +64,147 @@ if section == "📘 Learning":
     )
     st.altair_chart(line_chart, use_container_width=True)
 
-    # --- 3. Age & Sex Distribution ---
+    # Age & Sex Distribution
     st.subheader("Age Distribution of Infected Cases")
-    age_chart = alt.Chart(data[data['Infected']==1]).mark_bar().encode(
+    age_chart = alt.Chart(data[data['Infected'] == 1]).mark_bar().encode(
         x=alt.X('Age:Q', bin=True),
         y=alt.Y('count():Q'),
         color=alt.Color('Sex:N')
     )
     st.altair_chart(age_chart, use_container_width=True)
 
-    st.info("🧠 Tip: The infection rate and number of simulated cases can be changed in the sidebar.")
+    # Heatmap for simulated data
+    st.subheader("🌍 Heatmap of Simulated Mobile Clinic Infections")
+    heat_radius = st.slider("Heatmap Radius", 100, 2000, 500, key="sim_radius")
+    heat_intensity = st.slider("Heatmap Intensity", 0.1, 5.0, 1.0, key="sim_intensity")
+
+    layer = pdk.Layer(
+        'HeatmapLayer',
+        data=data[data['Infected']==1],
+        get_position='[Longitude, Latitude]',
+        aggregation='MEAN',
+        radius=heat_radius,
+        intensity=heat_intensity,
+        threshold=0.05
+    )
+
+    deck = pdk.Deck(
+        map_style='mapbox://styles/mapbox/light-v9',
+        initial_view_state=pdk.ViewState(
+            latitude=data['Latitude'].mean(),
+            longitude=data['Longitude'].mean(),
+            zoom=8,
+            pitch=0
+        ),
+        layers=[layer],
+        tooltip={"text": "Type: {Type of Infection}\nLat: {Latitude}\nLon: {Longitude}"}
+    )
+
+    st.pydeck_chart(deck)
+    st.info("💡 Adjust sliders above to simulate different numbers of cases, infection rates, and heatmap settings.")
 
 # ====================================================
-# 🧪 DOING SECTION
+# 🧪 DOING SECTION (with Session State for CSV)
 # ====================================================
 elif section == "🧪 Doing":
-    st.header("🧪 Experiment & Simulate Scenarios")
-
+    st.header("🧪 Mobile Clinic Operations")
     st.markdown("""
-    In **Doing Mode**, you can upload real-world outbreak data from mobile health teams 
-    or run predictive simulations to study outbreak dynamics.
+    Upload real mobile clinic CSV data to visualize infection spread in the field.
+    The heatmap will only appear if a CSV is uploaded.
     """)
 
-    # --- Upload Data or Use Simulation ---
-    st.subheader("📤 Data Input: Upload Field Data or Simulate Cases")
-    uploaded_file = st.file_uploader("Upload CSV Data (must include columns like Latitude, Longitude, Diagnosis Date, Infected)", type=["csv"])
+    # Initialize session state for uploaded file
+    if "uploaded_file" not in st.session_state:
+        st.session_state.uploaded_file = None
 
+    uploaded_file = st.file_uploader(
+        "Upload CSV from mobile clinic teams (must include Latitude, Longitude, Diagnosis Date, optional Type of Infection)",
+        type=["csv"],
+        key="file_uploader"
+    )
+
+    # Save to session state if new file is uploaded
     if uploaded_file is not None:
-        data = pd.read_csv(uploaded_file)
-        st.success("✅ Data uploaded successfully!")
+        st.session_state.uploaded_file = uploaded_file
+
+    # Only read the file if session state has a file
+    if st.session_state.uploaded_file is not None:
+        st.session_state.uploaded_file.seek(0)  # Reset pointer for repeated reads
+
+        try:
+            data = pd.read_csv(st.session_state.uploaded_file)
+        except pd.errors.EmptyDataError:
+            st.error("❌ Uploaded file is empty or invalid CSV.")
+            st.stop()
+
+        st.success("✅ CSV uploaded successfully!")
         st.dataframe(data.head())
 
-        # Check columns
+        # Validate required columns
         required_cols = {"Latitude", "Longitude", "Diagnosis Date"}
         if not required_cols.issubset(data.columns):
             st.error(f"❌ Missing required columns: {required_cols - set(data.columns)}")
             st.stop()
-        # Ensure proper date format
+
         data["Diagnosis Date"] = pd.to_datetime(data["Diagnosis Date"], errors='coerce')
-        if "Infected" not in data.columns:
-            st.warning("No 'Infected' column found — assuming all entries are infected.")
-            data["Infected"] = 1
-    else:
-        st.info("ℹ️ No data uploaded — using **simulated data** based on sidebar settings.")
-        # Use the simulated dataset from earlier in the script
 
-    # --- Predictive SIR Model ---
-    st.subheader("Predictive Outbreak Simulation (SIR Model)")
-    population = st.slider("Population Size", 1000, 100000, 5000)
-    beta = st.slider("Infection Rate (β)", 0.1, 1.0, 0.3)
-    gamma = st.slider("Recovery Rate (γ)", 0.01, 0.5, 0.1)
-    days = st.slider("Days to Simulate", 10, 100, 30)
+        if "Type of Infection" not in data.columns:
+            st.warning("⚠️ No 'Type of Infection' column found — assigning 'Unknown'.")
+            data["Type of Infection"] = "Unknown"
 
-    S = population - 1
-    I = 1
-    R = 0
-    sir_history = []
-    for day in range(days):
-        new_infected = beta * S * I / population
-        new_recovered = gamma * I
-        S -= new_infected
-        I += new_infected - new_recovered
-        R += new_recovered
-        sir_history.append({"Day": day, "Susceptible": S, "Infected": I, "Recovered": R})
-
-    sir_df = pd.DataFrame(sir_history)
-    sir_chart = alt.Chart(sir_df).transform_fold(
-        ['Susceptible', 'Infected', 'Recovered'],
-        as_=['Category', 'Count']
-    ).mark_line().encode(
-        x=alt.X('Day:Q'),
-        y=alt.Y('Count:Q'),
-        color=alt.Color('Category:N')
-    )
-    st.altair_chart(sir_chart, use_container_width=True)
-
-    # --- Control Measures ---
-    st.subheader("Apply Control Measures")
-    vaccination_rate = st.slider("Vaccinated Population (%)", 0, 100, 20)
-    social_distancing = st.slider("Reduce Infection Rate (%)", 0, 100, 30)
-    effective_beta = beta * (1 - social_distancing/100)
-    initial_infected = I
-    S_control = population * (1 - vaccination_rate/100)
-    I_control = initial_infected
-    R_control = population - S_control - I_control
-
-    control_history = []
-    for day in range(days):
-        new_infected = effective_beta * S_control * I_control / population
-        new_recovered = gamma * I_control
-        S_control -= new_infected
-        I_control += new_infected - new_recovered
-        R_control += new_recovered
-        control_history.append({"Day": day, "Susceptible": S_control, "Infected": I_control, "Recovered": R_control})
-
-    control_df = pd.DataFrame(control_history)
-    control_chart = alt.Chart(control_df).transform_fold(
-        ['Susceptible', 'Infected', 'Recovered'],
-        as_=['Category', 'Count']
-    ).mark_line().encode(
-        x=alt.X('Day:Q'),
-        y=alt.Y('Count:Q'),
-        color=alt.Color('Category:N')
-    )
-    st.altair_chart(control_chart, use_container_width=True)
-
-    # --- Real-Time Simulation (Works for Uploaded or Simulated Data) ---
-    st.subheader("💻 Real-Time Outbreak Simulation")
-
-    simulate_days = st.slider("Days to Simulate in Real-Time", 5, 30, 15)
-    speed = st.slider("Animation Speed (seconds per day)", 0.1, 2.0, 0.5)
-    heat_radius = st.slider("Heatmap Radius", 100, 2000, 500)
-    heat_intensity = st.slider("Heatmap Intensity", 0.1, 5.0, 1.0)
-    cluster_threshold = st.slider("Cluster Size Threshold", 5, 50, 10)
-
-    infected_sim = data.copy()
-    infected_sim['Diagnosis Date'] = pd.to_datetime(infected_sim['Diagnosis Date'])
-    infected_sim['Day'] = (infected_sim['Diagnosis Date'] - infected_sim['Diagnosis Date'].min()).dt.days
-    infected_sim['Status'] = np.where(np.random.rand(len(infected_sim)) < vaccination_rate/100, "Vaccinated", "Susceptible")
-    infected_sim.loc[infected_sim['Infected']==1, 'Status'] = "Infected"
-
-    placeholder_map = st.empty()
-    placeholder_chart = st.empty()
-
-    for day in range(simulate_days):
-        daily_data = infected_sim[infected_sim['Day'] <= day].copy()
-
-        # Update infected → recovered
-        daily_data.loc[daily_data['Status']=="Infected", 'Status'] = np.where(
-            np.random.rand(len(daily_data[daily_data['Status']=="Infected"])) < gamma, "Recovered", "Infected"
+        # Infection summary chart
+        st.subheader("🦠 Infection Summary by Type")
+        infection_summary = data.groupby("Type of Infection")["Latitude"].count().reset_index().rename(columns={"Latitude":"Cases"})
+        infection_chart = alt.Chart(infection_summary).mark_bar().encode(
+            x=alt.X("Type of Infection:N", sort='-y'),
+            y=alt.Y("Cases:Q"),
+            color="Type of Infection:N",
+            tooltip=["Type of Infection", "Cases"]
         )
+        st.altair_chart(infection_chart, use_container_width=True)
 
-        # Cluster detection
-        daily_data['lat_bin'] = (daily_data['Latitude'] * 100).astype(int)
-        daily_data['lon_bin'] = (daily_data['Longitude'] * 100).astype(int)
-        clusters = daily_data.groupby(['lat_bin', 'lon_bin']).size().reset_index(name='Count')
-        alert_clusters = clusters[clusters['Count'] >= cluster_threshold]
+        # --- Infection Type Filter ---
+        st.subheader("🌡️ Filter Heatmap by Infection Type")
+        infection_types = ["All"] + sorted(data["Type of Infection"].unique())
+        selected_type = st.selectbox("Select Infection Type", infection_types)
 
-        # PyDeck Layers
-        layers = [
-            pdk.Layer(
-                'ScatterplotLayer',
-                data=daily_data[daily_data['Status']=="Infected"],
-                get_position='[Longitude, Latitude]',
-                get_color='[255, 0, 0, 160]',
-                get_radius=500,
-                pickable=True,
-            ),
-            pdk.Layer(
-                'ScatterplotLayer',
-                data=daily_data[daily_data['Status']=="Recovered"],
-                get_position='[Longitude, Latitude]',
-                get_color='[0, 255, 0, 160]',
-                get_radius=500,
-                pickable=True,
-            ),
-            pdk.Layer(
-                'ScatterplotLayer',
-                data=daily_data[daily_data['Status']=="Vaccinated"],
-                get_position='[Longitude, Latitude]',
-                get_color='[0, 0, 255, 160]',
-                get_radius=500,
-                pickable=True,
-            ),
-            pdk.Layer(
-                'HeatmapLayer',
-                data=daily_data[daily_data['Status']=="Infected"],
-                get_position='[Longitude, Latitude]',
-                aggregation='MEAN',
-                radius=heat_radius,
-                intensity=heat_intensity,
-                threshold=0.05,
-            )
-        ]
+        if selected_type != "All":
+            filtered_data = data[data["Type of Infection"] == selected_type]
+        else:
+            filtered_data = data
 
-        # Highlight clusters
-        for _, row in alert_clusters.iterrows():
-            center = [row['lon_bin']/100, row['lat_bin']/100]
-            halo_colors = [(255,140,0,200), (255,165,0,120), (255,215,0,80)]
-            halo_radii = [1000, 1500, 2000]
-            for color, radius in zip(halo_colors, halo_radii):
-                layers.append(
-                    pdk.Layer(
-                        'ScatterplotLayer',
-                        data=pd.DataFrame([{'Longitude': center[0], 'Latitude': center[1]}]),
-                        get_position='[Longitude, Latitude]',
-                        get_color=f"[{color[0]}, {color[1]}, {color[2]}, {color[3]}]",
-                        get_radius=radius,
-                        pickable=False
-                    )
-                )
+        st.write(f"Showing {len(filtered_data)} cases on heatmap.")
+
+        # Heatmap sliders
+        heat_radius = st.slider("Heatmap Radius", 100, 2000, 500)
+        heat_intensity = st.slider("Heatmap Intensity", 0.1, 5.0, 1.0)
+
+        # Heatmap Layer
+        layer = pdk.Layer(
+            'HeatmapLayer',
+            data=filtered_data,
+            get_position='[Longitude, Latitude]',
+            aggregation='MEAN',
+            radius=heat_radius,
+            intensity=heat_intensity,
+            threshold=0.05
+        )
 
         deck = pdk.Deck(
             map_style='mapbox://styles/mapbox/light-v9',
             initial_view_state=pdk.ViewState(
-                latitude=daily_data['Latitude'].mean(),
-                longitude=daily_data['Longitude'].mean(),
+                latitude=filtered_data['Latitude'].mean(),
+                longitude=filtered_data['Longitude'].mean(),
                 zoom=8,
-                pitch=0,
+                pitch=0
             ),
-            layers=layers,
-            tooltip={"text": "Status: {Status}\nLat: {Latitude}\nLon: {Longitude}"}
+            layers=[layer],
+            tooltip={"text": "Type: {Type of Infection}\nLat: {Latitude}\nLon: {Longitude}"}
         )
 
-        placeholder_map.pydeck_chart(deck)
+        st.pydeck_chart(deck)
 
-        # Cumulative infections chart
-        time_series_sim = daily_data.groupby("Diagnosis Date")["Infected"].sum().cumsum().reset_index()
-        line_chart_sim = alt.Chart(time_series_sim).mark_line(point=True).encode(
-            x=alt.X('Diagnosis Date:T'),
-            y=alt.Y('Infected:Q')
-        )
-        placeholder_chart.altair_chart(line_chart_sim, use_container_width=True)
+    else:
+        st.info("ℹ️ Upload a CSV to view heatmap. Currently no heatmap displayed.")
 
-        time.sleep(speed)
 
