@@ -33,10 +33,10 @@ if section == "📘 Learning":
 
     # Mobile clinic infection types
     mobile_clinic_infection_types = [
-        "URTI", "Gastroenteritis", "Skin Infection", "UTI", "STI",
-        "Eye Infection", "Ear Infection", "Minor Wound", "Parasitic Infection",
-        "Influenza-like Illness", "Allergic Reaction", "Dental Infection",
-        "Nutritional / Hygiene Condition", "Other"
+     "Waterborne Infections", "Vector-Borne Diseases", "Respiratory Infections", 
+    "Gastrointestinal Infections", "Skin Infections", "Trauma/Injuries", 
+    "Chronic Conditions", "Nutritional Deficiencies", "Vaccine-Preventable Diseases", 
+    "Hygiene and Sanitation-Related Issues", "Other"
     ]
 
     # Generate simulated mobile clinic data
