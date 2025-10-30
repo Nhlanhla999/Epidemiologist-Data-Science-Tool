@@ -6,7 +6,7 @@ import pydeck as pdk
 from datetime import datetime
 
 # --- Page Setup ---
-st.set_page_config(page_title="Mobile Clinic Epidemiologist Tool", layout="wide")
+st.set_page_config(page_title="Epidemiologist Tool", layout="wide")
 st.title("🦠 Epidemiologist Data Science Tool")
 
 # --- Sidebar Navigation ---
@@ -19,7 +19,7 @@ section = st.sidebar.radio("Go to:", ["📘 Learning", "🧪 Doing"])
 if section == "📘 Learning":
     st.header("📘 Learn Epidemiological Concepts")
     st.markdown("""
-    Welcome to **Learning Mode**! Explore sample mobile clinic data, run experiments, 
+    Welcome to **Learning Mode**! Explore sample data, run experiments, 
     and see how changing parameters affects infection spread.
     """)
 
@@ -74,7 +74,7 @@ if section == "📘 Learning":
     st.altair_chart(age_chart, use_container_width=True)
 
     # Heatmap for simulated data
-    st.subheader("🌍 Heatmap of Simulated Mobile Clinic Infections")
+    st.subheader("🌍 Heatmap of Simulated Infections")
     heat_radius = st.slider("Heatmap Radius", 100, 2000, 500, key="sim_radius")
     heat_intensity = st.slider("Heatmap Intensity", 0.1, 5.0, 1.0, key="sim_intensity")
 
@@ -103,56 +103,48 @@ if section == "📘 Learning":
     st.pydeck_chart(deck)
     st.info("💡 Adjust sliders above to simulate different numbers of cases, infection rates, and heatmap settings.")
 
+
 # ====================================================
-# 🧪 DOING SECTION (with Session State for CSV)
+# 🧪 DOING SECTION (Daily Infection Type + Heatmap)
 # ====================================================
 elif section == "🧪 Doing":
     st.header("🧪 Mobile Clinic Operations")
     st.markdown("""
-    Upload real mobile clinic CSV data to visualize infection spread in the field.
-    The heatmap will only appear if a CSV is uploaded.
+    Upload CSV data to visualize infection spread in the field.
+    You can see infections by type over time and on the heatmap.
     """)
 
-    # Initialize session state for uploaded file
     if "uploaded_file" not in st.session_state:
         st.session_state.uploaded_file = None
 
     uploaded_file = st.file_uploader(
-        "Upload CSV from mobile clinic teams (must include Latitude, Longitude, Diagnosis Date, optional Type of Infection)",
-        type=["csv"],
-        key="file_uploader"
+        "Upload CSV from health clinic teams (must include Latitude, Longitude, Diagnosis Date, optional Type of Infection)",
+        type=["csv"]
     )
 
-    # Save to session state if new file is uploaded
     if uploaded_file is not None:
         st.session_state.uploaded_file = uploaded_file
 
-    # Only read the file if session state has a file
     if st.session_state.uploaded_file is not None:
-        st.session_state.uploaded_file.seek(0)  # Reset pointer for repeated reads
-
+        st.session_state.uploaded_file.seek(0)
         try:
             data = pd.read_csv(st.session_state.uploaded_file)
-        except pd.errors.EmptyDataError:
+        except (pd.errors.EmptyDataError, pd.errors.ParserError):
             st.error("❌ Uploaded file is empty or invalid CSV.")
             st.stop()
 
-        st.success("✅ CSV uploaded successfully!")
-        st.dataframe(data.head())
-
-        # Validate required columns
         required_cols = {"Latitude", "Longitude", "Diagnosis Date"}
         if not required_cols.issubset(data.columns):
             st.error(f"❌ Missing required columns: {required_cols - set(data.columns)}")
             st.stop()
 
         data["Diagnosis Date"] = pd.to_datetime(data["Diagnosis Date"], errors='coerce')
+        data = data.dropna(subset=["Diagnosis Date"])
 
         if "Type of Infection" not in data.columns:
             st.warning("⚠️ No 'Type of Infection' column found — assigning 'Unknown'.")
             data["Type of Infection"] = "Unknown"
 
-        # Infection summary chart
         st.subheader("🦠 Infection Summary by Type")
         infection_summary = data.groupby("Type of Infection")["Latitude"].count().reset_index().rename(columns={"Latitude":"Cases"})
         infection_chart = alt.Chart(infection_summary).mark_bar().encode(
@@ -163,7 +155,18 @@ elif section == "🧪 Doing":
         )
         st.altair_chart(infection_chart, use_container_width=True)
 
-        # --- Infection Type Filter ---
+        # --- Infection Over Time by Type (Daily) ---
+        st.subheader("📅 Infections Over Time by Type")
+        daily_type_summary = data.groupby(['Diagnosis Date', 'Type of Infection'])['Latitude'].count().reset_index().rename(columns={'Latitude':'Cases'})
+        daily_type_chart = alt.Chart(daily_type_summary).mark_bar().encode(
+            x=alt.X('Diagnosis Date:T', title="Date"),
+            y=alt.Y('Cases:Q'),
+            color=alt.Color('Type of Infection:N', legend=alt.Legend(title="Infection Type")),
+            tooltip=['Diagnosis Date', 'Type of Infection', 'Cases']
+        )
+        st.altair_chart(daily_type_chart, use_container_width=True)
+
+        # --- Heatmap Filter by Infection Type ---
         st.subheader("🌡️ Filter Heatmap by Infection Type")
         infection_types = ["All"] + sorted(data["Type of Infection"].unique())
         selected_type = st.selectbox("Select Infection Type", infection_types)
@@ -175,11 +178,15 @@ elif section == "🧪 Doing":
 
         st.write(f"Showing {len(filtered_data)} cases on heatmap.")
 
-        # Heatmap sliders
         heat_radius = st.slider("Heatmap Radius", 100, 2000, 500)
         heat_intensity = st.slider("Heatmap Intensity", 0.1, 5.0, 1.0)
 
-        # Heatmap Layer
+        if len(filtered_data) > 0:
+            center_lat = filtered_data['Latitude'].mean()
+            center_lon = filtered_data['Longitude'].mean()
+        else:
+            center_lat, center_lon = -29.75, 26.0
+
         layer = pdk.Layer(
             'HeatmapLayer',
             data=filtered_data,
@@ -193,8 +200,8 @@ elif section == "🧪 Doing":
         deck = pdk.Deck(
             map_style='mapbox://styles/mapbox/light-v9',
             initial_view_state=pdk.ViewState(
-                latitude=filtered_data['Latitude'].mean(),
-                longitude=filtered_data['Longitude'].mean(),
+                latitude=center_lat,
+                longitude=center_lon,
                 zoom=8,
                 pitch=0
             ),
@@ -205,6 +212,5 @@ elif section == "🧪 Doing":
         st.pydeck_chart(deck)
 
     else:
-        st.info("ℹ️ Upload a CSV to view heatmap. Currently no heatmap displayed.")
-
+        st.info("ℹ️ Upload a CSV to view heatmap and charts.")
 
